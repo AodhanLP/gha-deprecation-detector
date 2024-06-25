@@ -9,6 +9,9 @@ Automated Python script to detect GitHub Action Deprecation Warning messages acr
 ## Download and install the GitHub CLI
 - `brew install gh`
 
+## Authenticate with a GitHub host
+- `gh auth login`
+
 ## Download and install Python
 - `brew install python@3.10`
 
