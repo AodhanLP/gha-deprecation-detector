@@ -26,3 +26,10 @@ There is also a script to detect a specific GitHub Action being used in workflow
 
 ## Run the specific action script
 - `python3.11 search-action.py actions/checkout`
+
+# annotations.py
+
+Python script which reuses most of the original deprecation.py script.
+Pulls all the annotations thrown from any previously successful work-flow runs.
+Removes duplicates & produces a JSON file which could later be used in a Jenkins pipeline.
+`params.py still needs to be created for this to work`
