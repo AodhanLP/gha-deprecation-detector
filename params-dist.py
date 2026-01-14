@@ -9,3 +9,6 @@ org = 'actions'
 
 # CSV File Name
 csv_file_path = 'affected_actions.csv'
+
+# JSON File Name
+json_filename = 'annotations.json'

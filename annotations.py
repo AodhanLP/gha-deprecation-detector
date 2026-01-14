@@ -1,4 +1,3 @@
-from datetime import datetime
 import subprocess
 import json
 import repos as r
@@ -8,6 +7,7 @@ import params as p
 repos = r.repos
 verbose_output = p.verbose_output
 annotation_json = {}
+json_filename = p.json_filename
     
 # Iterate through each of the orgs repositories
 for repo in repos:
@@ -97,8 +97,7 @@ for repo in repos:
         print(e)
 
 json_output = json.dumps(annotation_json, indent=4)
-now = datetime.today().strftime('%d_%m_%Y_%H:%M:%S')
 
-with open(f"data_{now}.json", "a") as j:
+with open(json_filename, "a") as j:
     j.write(json_output)
 j.close()

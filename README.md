@@ -3,6 +3,11 @@ Automated Python script to detect GitHub Action Deprecation Warning messages acr
 
 There is also a script to detect a specific GitHub Action being used in workflows across all repositories in an organisation, and exports the results to a CSV file.
 
+# annotations
+Python script which reuses most of the original deprecation.py script.
+Pulls all the annotations thrown from any previously successful work-flow runs.
+Removes duplicates & produces a JSON file which could later be used in a Jenkins pipeline.
+
 # Setup
 
 ## Checkout the code
@@ -27,9 +32,5 @@ There is also a script to detect a specific GitHub Action being used in workflow
 ## Run the specific action script
 - `python3.11 search-action.py actions/checkout`
 
-# annotations.py
-
-Python script which reuses most of the original deprecation.py script.
-Pulls all the annotations thrown from any previously successful work-flow runs.
-Removes duplicates & produces a JSON file which could later be used in a Jenkins pipeline.
-`params.py still needs to be created for this to work`
+## Run the annotations script
+- `python3.11 annotations.py`
