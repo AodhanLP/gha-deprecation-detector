@@ -8,6 +8,7 @@ repos = r.repos
 verbose_output = p.verbose_output
 annotation_json = {}
 json_filename = p.json_filename
+accepted_file_extensions = p.accepted_file_extensions
     
 # Iterate through each of the orgs repositories
 for repo in repos:
@@ -42,56 +43,59 @@ for repo in repos:
                 workflow_path = recent_workflow_run["path"]
                 repository_name = recent_workflow_run["repository"]["name"]
 
+                # Check if the workflow file extension is accepted
+                if workflow_path.rsplit('.', 1)[1] in accepted_file_extensions:
+
                 # Print the above variables
-                if verbose_output:
-                    print("Check Suite ID:", check_suite_id)
-                    print("Workflow Name:", workflow_name)
-                    print("Workflow Path:", workflow_path)
-                    print("Repository Name:", repo)
+                    if verbose_output:
+                        print("Check Suite ID:", check_suite_id)
+                        print("Workflow Name:", workflow_name)
+                        print("Workflow Path:", workflow_path)
+                        print("Repository Name:", repo)
 
-                # Retrieve Annotations data
-                annotation_urls_cmd = f"gh api '/repos/{repo}/check-suites/{check_suite_id}/check-runs'"
-                annotation_urls_output = subprocess.check_output(annotation_urls_cmd, shell=True)
-                annotation_urls_data = json.loads(annotation_urls_output)
+                    #Retrieve Annotations data
+                    annotation_urls_cmd = f"gh api '/repos/{repo}/check-suites/{check_suite_id}/check-runs'"
+                    annotation_urls_output = subprocess.check_output(annotation_urls_cmd, shell=True)
+                    annotation_urls_data = json.loads(annotation_urls_output)
 
-                # Retrieve Annotations URLs if annotations_count is greater than 0
-                annotation_urls = []
-                for check_run in annotation_urls_data.get("check_runs", []):
-                    annotations_count = check_run.get("output", {}).get("annotations_count", 0)
-                    if annotations_count > 0:
-                        annotations_url = check_run.get("output", {}).get("annotations_url")
-                        annotation_urls.append(annotations_url)
+                    # Retrieve Annotations URLs if annotations_count is greater than 0
+                    annotation_urls = []
+                    for check_run in annotation_urls_data.get("check_runs", []):
+                        annotations_count = check_run.get("output", {}).get("annotations_count", 0)
+                        if annotations_count > 0:
+                            annotations_url = check_run.get("output", {}).get("annotations_url")
+                            annotation_urls.append(annotations_url)
 
-                if verbose_output:
-                    print("Annotation URLs:", annotation_urls)
+                    if verbose_output:
+                        print("Annotation URLs:", annotation_urls)
 
-                # Retrieve Annotations Messages from each Annotations URL
-                annotation_messages = []
-                for annotation_url in annotation_urls:
-                    annotation_messages_cmd = f"gh api '{annotation_url}'"
-                    annotation_messages_output = subprocess.check_output(annotation_messages_cmd, shell=True)
-                    annotation_messages_data = json.loads(annotation_messages_output)
+                    # Retrieve Annotations Messages from each Annotations URL
+                    annotation_messages = []
+                    for annotation_url in annotation_urls:
+                        annotation_messages_cmd = f"gh api '{annotation_url}'"
+                        annotation_messages_output = subprocess.check_output(annotation_messages_cmd, shell=True)
+                        annotation_messages_data = json.loads(annotation_messages_output)
 
-                    # Extract each annotation message and add to the list
-                    for annotation_data in annotation_messages_data:
-                        annotation_messages.append(annotation_data.get("message"))
+                        # Extract each annotation message and add to the list
+                        for annotation_data in annotation_messages_data:
+                            annotation_messages.append(annotation_data.get("message"))
 
-                if verbose_output:
-                    print("Annotation Messages:", annotation_messages)
+                    if verbose_output:
+                        print("Annotation Messages:", annotation_messages)
 
-                # Remove duplicated annotations per run prior to putting into JSON
-                master_list = list(dict.fromkeys(annotation_messages))
+                    # Remove duplicated annotations per run prior to putting into JSON
+                    master_list = list(dict.fromkeys(annotation_messages))
 
-                # Write the data to JSON
-                if annotation_messages:
-                    counter += 1
-                    annotation_json[repo + '_' + str(counter)] = {
-                    "check_suite_id" : check_suite_id,
-                    "workflow_name" : workflow_name,
-                    "workflow_path" : workflow_path,
-                    "repository_name" : repository_name,
-                    "annotation_messages" : master_list
-                    }
+                    # Write the data to JSON
+                    if annotation_messages:
+                        counter += 1
+                        annotation_json[repo + '_' + str(counter)] = {
+                        "check_suite_id" : check_suite_id,
+                        "workflow_name" : workflow_name,
+                        "workflow_path" : workflow_path,
+                        "repository_name" : repository_name,
+                        "annotation_messages" : master_list
+                        }
 
     except Exception as e:
         print(e)
