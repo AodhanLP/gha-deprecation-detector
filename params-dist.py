@@ -12,6 +12,3 @@ csv_file_path = 'affected_actions.csv'
 
 # JSON File Name
 json_filename = 'annotations.json'
-
-# Accepted file extensions for annotations 
-accepted_file_extensions = ['yml', 'yaml']
