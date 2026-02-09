@@ -1,12 +1,9 @@
 # gha-deprecation-detector
-Automated Python script to detect GitHub Action Deprecation Warning messages across all repositories in an organisation, and exports the results to a CSV file.
+deprecation.py is used to detect GitHub Action Deprecation Warning messages across all repositories in an organisation, and exports the results to a CSV file.
 
-There is also a script to detect a specific GitHub Action being used in workflows across all repositories in an organisation, and exports the results to a CSV file.
+search-action.py is used to detect a specific GitHub Action being used in workflows across all repositories in an organisation, and exports the results to a CSV file.
 
-# annotations
-Python script which reuses most of the original deprecation.py script.
-Pulls all the annotations thrown from any previously successful work-flow runs.
-Removes duplicates & produces a JSON file which could later be used in a Jenkins pipeline.
+annotations.py is used to detect all annotations on workflows across all repositories in an organisation, and exports the results to a JSON file.
 
 # Setup
 
