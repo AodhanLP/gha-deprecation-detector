@@ -1,9 +1,9 @@
 # gha-deprecation-detector
-deprecation.py is used to detect GitHub Action Deprecation Warning messages across all repositories in an organisation, and exports the results to a CSV file.
+`deprecation.py` is used to detect GitHub Action Deprecation Warning messages across all repositories in an organisation, and exports the results to a CSV file.
 
-search-action.py is used to detect a specific GitHub Action being used in workflows across all repositories in an organisation, and exports the results to a CSV file.
+`search-action.py` is used to detect a specific GitHub Action being used in workflows across all repositories in an organisation, and exports the results to a CSV file.
 
-annotations.py is used to detect all annotations on workflows across all repositories in an organisation, and exports the results to a JSON file.
+`annotations.py` is used to detect all annotations on workflows across all repositories in an organisation, and exports the results to a JSON file.
 
 # Setup
 
