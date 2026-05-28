@@ -1,120 +1,145 @@
-import subprocess
-import json
-import re
 import csv
-import repos as r
-import params as p
+import re
+import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-# Initialise parameters
-repos = r.repos
+import gh_client
+import params as p
+import repos as r
+
+MAX_WORKERS = 8
+ACTION_REGEX = re.compile(r'(?:[\w-]+\/[\w-]+)@[\w\d]+(?:\.[\w\d]+)*')
+
+repos_list = r.repos
 verbose_output = p.verbose_output
 deprecation_warning = p.deprecation_warning
 csv_file_path = p.csv_file_path
 
-# Define the fieldnames for the CSV header
 fieldnames = ["Repository Name", "Workflow Name", "Workflow Path", "Affected Actions"]
 
-# Open the CSV file in append mode
-with open(csv_file_path, mode='a', newline='') as file:
-    writer = csv.DictWriter(file, fieldnames=fieldnames)
 
-    # Check if the file is empty, if yes, write the header
-    if file.tell() == 0:
+def list_workflows(repo):
+    data = gh_client.get(f"/repos/{repo}/actions/workflows")
+    return [w["id"] for w in data.get("workflows", []) if w.get("path")]
+
+
+def process_workflow(repo, workflow_id):
+    runs_data = gh_client.get(
+        f"/repos/{repo}/actions/workflows/{workflow_id}/runs",
+        params={
+            "status": "completed",
+            "conclusion": "success",
+            "per_page": 1,
+            "sort": "created",
+            "direction": "desc",
+        },
+    )
+    runs = runs_data.get("workflow_runs", [])
+    if not runs:
+        return None
+    run = runs[0]
+    check_suite_id = run["check_suite_id"]
+    workflow_name = run["name"]
+    workflow_path = run["path"]
+    repository_name = run["repository"]["name"]
+
+    if verbose_output:
+        print(f"[deprecation] {repo} / {workflow_name} (suite {check_suite_id})")
+
+    check_runs_data = gh_client.get(
+        f"/repos/{repo}/check-suites/{check_suite_id}/check-runs"
+    )
+    annotation_urls = []
+    for cr in check_runs_data.get("check_runs", []):
+        out = cr.get("output") or {}
+        if out.get("annotations_count", 0) > 0 and out.get("annotations_url"):
+            annotation_urls.append(out["annotations_url"])
+
+    seen_messages = set()
+    affected_actions = []
+    for url in annotation_urls:
+        for ann in gh_client.get(url):
+            if ann.get("annotation_level") != "warning":
+                continue
+            msg = ann.get("message") or ""
+            if msg in seen_messages or not msg.startswith(deprecation_warning):
+                continue
+            seen_messages.add(msg)
+            for m in ACTION_REGEX.findall(msg):
+                if m not in affected_actions:
+                    affected_actions.append(m)
+
+    if not affected_actions:
+        return None
+    return {
+        "Repository Name": repository_name,
+        "Workflow Name": workflow_name,
+        "Workflow Path": workflow_path,
+        "Affected Actions": affected_actions,
+    }
+
+
+def main():
+    remaining, limit, reset = gh_client.rate_limit()
+    print(f"GitHub API rate limit: {remaining}/{limit} remaining")
+    if remaining < 200:
+        wait_s = max(reset - int(time.time()), 0)
+        print(f"WARNING: rate limit low. Resets in {wait_s}s")
+
+    failures = []  # list of (stage, repo, workflow_id_or_None, exception)
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
+        wf_futures = {pool.submit(list_workflows, repo): repo for repo in repos_list}
+        repo_workflows = []
+        for fut in as_completed(wf_futures):
+            repo = wf_futures[fut]
+            exc = fut.exception()
+            if exc is not None:
+                print(f"[deprecation] {repo}: failed to list workflows ({exc})")
+                failures.append(("list_workflows", repo, None, exc))
+                continue
+            for wid in fut.result():
+                repo_workflows.append((repo, wid))
+        print(f"Scanning {len(repo_workflows)} workflows across {len(repos_list)} repos")
+
+        proc_futures = {
+            pool.submit(process_workflow, repo, wid): (repo, wid)
+            for repo, wid in repo_workflows
+        }
+        rows = []
+        done = 0
+        total = len(proc_futures)
+        for fut in as_completed(proc_futures):
+            repo, wid = proc_futures[fut]
+            done += 1
+            if done % 50 == 0 or done == total:
+                print(f"  ...processed {done}/{total}")
+            exc = fut.exception()
+            if exc is not None:
+                print(f"[deprecation] {repo} workflow {wid}: {exc}")
+                failures.append(("process_workflow", repo, wid, exc))
+                continue
+            result = fut.result()
+            if result:
+                rows.append(result)
+
+    with open(csv_file_path, mode="w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-    
-    # Write the data for each workflow iteration
-    for repo in repos:
-        try:
-            # Initialise active_workflows
-            active_workflows = []
+        for row in rows:
+            writer.writerow(row)
 
-            # Retrieve all workflows for a repository
-            workflows_cmd = f"gh api '/repos/{repo}/actions/workflows'"
-            workflows_output = subprocess.check_output(workflows_cmd, shell=True)
-            workflows_data = json.loads(workflows_output)
+    print(f"\nWrote {len(rows)} rows to {csv_file_path}")
+    print(f"Failures: {len(failures)}")
+    if failures:
+        for stage, repo, wid, exc in failures[:20]:
+            target = f"{repo} workflow {wid}" if wid is not None else repo
+            print(f"  [{stage}] {target}: {exc}")
+        if len(failures) > 20:
+            print(f"  ...and {len(failures) - 20} more")
+        sys.exit(1)
 
-            # Iterate through each workflow, add the id to the active_workflows list if the path is not empty
-            for workflow in workflows_data["workflows"]:
-                if workflow["path"]:
-                    active_workflows.append(workflow["id"])
 
-            # Retrieve the most recent, successful, completed workflow
-            for workflow in active_workflows:
-                recent_workflow_cmd = f"gh api '/repos/{repo}/actions/workflows/{workflow}/runs?status=completed&conclusion=success&per_page=1&sort=created&direction=desc'"
-                recent_workflow_output = subprocess.check_output(recent_workflow_cmd, shell=True)
-                recent_workflow_data = json.loads(recent_workflow_output)
-
-                if recent_workflow_data["workflow_runs"]:
-                    # Get the first workflow run (most recent)
-                    recent_workflow_run = recent_workflow_data["workflow_runs"][0]
-
-                    # Define the following variables
-                    check_suite_id = recent_workflow_run["check_suite_id"]
-                    workflow_name = recent_workflow_run["name"]
-                    workflow_path = recent_workflow_run["path"]
-                    repository_name = recent_workflow_run["repository"]["name"]
-
-                    # Print the above variables
-                    if verbose_output:
-                        print("Check Suite ID:", check_suite_id)
-
-                    print("Workflow Name:", workflow_name)
-                    print("Workflow Path:", workflow_path)
-                    print("Repository Name:", repository_name)
-
-                    # Retrieve Annotations data
-                    annotation_urls_cmd = f"gh api '/repos/{repo}/check-suites/{check_suite_id}/check-runs'"
-                    annotation_urls_output = subprocess.check_output(annotation_urls_cmd, shell=True)
-                    annotation_urls_data = json.loads(annotation_urls_output)
-
-                    # Retrieve Annotations URLs if annotations_count is greater than 0
-                    annotation_urls = []
-                    for check_run in annotation_urls_data.get("check_runs", []):
-                        annotations_count = check_run.get("output", {}).get("annotations_count", 0)
-                        if annotations_count > 0:
-                            annotations_url = check_run.get("output", {}).get("annotations_url")
-                            annotation_urls.append(annotations_url)
-
-                    if verbose_output:
-                        print("Annotation URLs:", annotation_urls)
-
-                    # Retrieve Annotations Messages if annotation_level is a warning and unique
-                    annotation_messages = []
-                    for annotation_url in annotation_urls:
-                        annotation_messages_cmd = f"gh api '{annotation_url}'"
-                        annotation_messages_output = subprocess.check_output(annotation_messages_cmd, shell=True)
-                        annotation_messages_data = json.loads(annotation_messages_output)
-
-                        for annotation_data in annotation_messages_data:
-                            if annotation_data.get("annotation_level") == "warning":
-                                annotation_message = annotation_data.get("message")
-                                if annotation_message not in annotation_messages:
-                                    if annotation_message.startswith(deprecation_warning):
-                                        annotation_messages.append(annotation_message)
-
-                    if verbose_output:
-                        print("Annotation Messages:", annotation_messages)
-
-                    # Retrieve the affected actions using regular expression
-                    affected_actions = []
-                    for message in annotation_messages:
-                        matches = re.findall(r'(?:[\w-]+\/[\w-]+)@[\w\d]+(?:\.[\w\d]+)*', message)
-                        for match in matches:
-                            if match not in affected_actions:
-                                affected_actions.append(match)
-
-                    print("Affected Actions:", affected_actions)
-                    print()
-
-                    # Write the data to the CSV file if there are affected actions
-                    if affected_actions:
-                        writer.writerow({
-                            "Repository Name": repository_name,
-                            "Workflow Name": workflow_name,
-                            "Workflow Path": workflow_path,
-                            "Affected Actions": affected_actions
-                        })
-        except:
-            print(f'Failed to analyse GHA Annotations for {repo}.')
-            print('Exiting program.')
-            exit()
+if __name__ == "__main__":
+    main()

@@ -2,3 +2,5 @@ __pycache__
 params.py
 *.csv
 *.json
+*.html
+*-output.log

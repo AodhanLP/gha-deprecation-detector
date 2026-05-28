@@ -1,33 +1,51 @@
 # gha-deprecation-detector
-`deprecation.py` is used to detect GitHub Action Deprecation Warning messages across all repositories in an organisation, and exports the results to a CSV file.
 
-`search-action.py` is used to detect a specific GitHub Action being used in workflows across all repositories in an organisation, and exports the results to a CSV file.
+Scans a GitHub org for workflow annotations (deprecation warnings, errors, etc.)
+and turns them into a CSV or a self-contained HTML report.
 
-`annotations.py` is used to detect all annotations on workflows across all repositories in an organisation, and exports the results to a JSON file.
+## Setup (once)
 
-# Setup
+```bash
+brew install gh python              # if not already
+gh auth login                      # auth as yourself, or set GH_TOKEN env var
+pip install -r requirements.txt
 
-## Checkout the code
-- `git clone git@github.com:AodhanLP/gha-deprecation-detector.git`
+cp params-dist.py params.py        # then edit `org` in params.py
+```
 
-## Download and install the GitHub CLI
-- `brew install gh`
+## The scripts
 
-## Authenticate with a GitHub host
-- `gh auth login`
+| Script             | What it does                                                        | Output                       |
+|--------------------|----------------------------------------------------------------------|------------------------------|
+| `annotations.py`   | Wide net — collect every annotation message from the latest successful run of every workflow | `annotations.json`           |
+| `deprecation.py`   | Narrow filter — only warnings matching `params.deprecation_warning`, extracts affected `owner/action@ref` | `affected_actions.csv`       |
+| `search-action.py` | Find every workflow in the org that references a given action       | `repos_with_<action>.csv`    |
+| `render_report.py` | Turn `annotations.json` into a styled HTML report (charts, tables)  | `annotations_report.html`    |
 
-## Download and install Python
-- `brew install python@3.11`
+## Typical run
 
-## Create a params file
-- `cp params-dist.py params.py`
-- Update your params file appropriately.
+```bash
+python3 annotations.py          # collect — takes a few minutes
+python3 render_report.py        # render — instant
+open annotations_report.html       # view
+```
 
-## Run the deprecation script
-- `python3.11 deprecation.py`
+For the narrower spreadsheet of just deprecation hits:
 
-## Run the specific action script
-- `python3.11 search-action.py actions/checkout`
+```bash
+python3 deprecation.py
+open affected_actions.csv
+```
 
-## Run the annotations script
-- `python3.11 annotations.py`
+To check which repos use a specific action:
+
+```bash
+python3 search-action.py actions/checkout
+```
+
+## Notes
+
+- All scripts share `gh_client.py` — auth from `GH_TOKEN`/`GITHUB_TOKEN` env var
+  first, then `gh auth token` as fallback. Parallel API calls with automatic
+  back-off on rate-limit hits.
+- Output files are overwritten on each run.
