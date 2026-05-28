@@ -22,5 +22,3 @@ while True:
     page += 1
 
 print("Total number of repositories:", len(repos))
-print()
-print(repos)
