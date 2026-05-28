@@ -5,7 +5,7 @@ verbose_output = False
 deprecation_warning = 'Node.js 16 actions are deprecated. Please update the following actions to use Node.js 20'
 
 # GitHub Organisation name
-org = 'actions'
+org = 'HT2-Labs'
 
 # CSV File Name
 csv_file_path = 'affected_actions.csv'
