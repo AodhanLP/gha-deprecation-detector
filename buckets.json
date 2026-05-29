@@ -1,0 +1,22 @@
+[
+  {"label": "Node.js 12 deprecation",            "pattern": "node.js 12 actions are deprecated"},
+  {"label": "Node.js 16 deprecation",            "pattern": "node.js 16 actions are deprecated"},
+  {"label": "Node.js 20 deprecation",            "pattern": "node.js 20 actions are deprecated"},
+  {"label": "Node.js 20 -> 24 forced",           "pattern": "are being forced to run on node.js 24"},
+  {"label": "set-output",                        "pattern": "the `set-output` command is deprecated"},
+  {"label": "save-state",                        "pattern": "the `save-state` command is deprecated"},
+  {"label": "upload-artifact v3",                "pattern": "actions/upload-artifact: v3"},
+  {"label": "checkout v1/v2",                    "pattern": "actions/checkout: v"},
+  {"label": "add-mask command",                  "pattern": "the `add-mask` command is deprecated"},
+  {"label": "actions/cache v2 deprecated",       "pattern": "deprecated version of `actions/cache: v2`"},
+  {"label": "License check (clean)",             "pattern": "no flagged licences"},
+  {"label": "create-pull-request: detached HEAD","pattern": "the 'base' input must be supplied"},
+  {"label": "Composer dependency conflict",      "pattern": "composer rejected the package list"},
+  {"label": "GitHub auth failure",               "pattern": "could not authenticate against github.com"},
+  {"label": "Action not resolvable",             "pattern": "unable to resolve action"},
+  {"label": "Run cancelled",                     "pattern": "was canceled"},
+  {"label": "Restore cache failed",              "pattern": "restore cache failed"},
+  {"label": "Git command failed",                "pattern": "the process '/usr/bin/git' failed"},
+  {"label": "Step exited non-zero",              "pattern": "process completed with exit code"},
+  {"label": "Resource not found",                "pattern": "not found"}
+]

@@ -43,6 +43,26 @@ To check which repos use a specific action:
 python3 search-action.py actions/checkout
 ```
 
+## Maintaining the report
+
+Two JSON files at the repo root drive what shows up in the HTML report — edit
+them, re-run `render_report.py`, done. No Python change needed.
+
+| File | Controls | Add an entry when... |
+|---|---|---|
+| `buckets.json` | How annotation messages are categorised (donut slices, drill-down tables) | GitHub announces a new deprecation type — e.g. Node.js 24 deprecation |
+| `suites.json`  | Which products belong to which suite ( "By suite" cards) | A new product joins a team, or a new suite is wanted |
+
+**`buckets.json`** — list of `{label, pattern}`. Pattern is a lowercased
+substring match; **order matters** (first match wins), so put specific
+entries before generic ones. Anything that doesn't match falls into
+`Other deprecation` / `Errors` / `Other warnings` automatically.
+
+**`suites.json`** — object of `suite name → list of product names`.
+Product names are matched against repo basenames after lowercasing and
+stripping non-alphanumerics (`Design-System` matches repo `design-system`).
+Repos not in any suite fall into `Other`.
+
 ## Notes
 
 - All scripts share `gh_client.py` — auth from `GH_TOKEN`/`GITHUB_TOKEN` env var

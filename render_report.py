@@ -134,6 +134,26 @@ svg a circle:hover { opacity: 0.85; }
 }
 .category-detail tbody tr { cursor: help; }
 .category-detail tbody tr:hover { background: #f6f8fa; }
+.suites {
+    display: flex; gap: 12px; padding: 16px 32px; flex-wrap: wrap;
+    background: #fff; border-bottom: 1px solid #d0d7de;
+}
+.suites-heading {
+    width: 100%; margin: 0 0 4px 0; font-size: 13px;
+    text-transform: uppercase; color: #57606a; letter-spacing: 0.4px;
+}
+.suite-card {
+    flex: 1 1 240px; background: #f6f8fa; border: 1px solid #d0d7de;
+    border-radius: 6px; padding: 12px;
+}
+.suite-card h4 { margin: 0 0 8px 0; font-size: 14px; font-weight: 600; }
+.suite-card h4 .muted {
+    color: #57606a; font-weight: 400; font-size: 12px; margin-left: 6px;
+}
+.suite-card .donut-wrap { display: flex; gap: 12px; align-items: center; }
+.suite-card .empty {
+    color: #57606a; font-size: 12px; padding: 24px 0; text-align: center;
+}
 .category-detail tbody td { padding: 0; }
 .category-detail tbody td .row-link {
     display: block; padding: 8px 16px;
@@ -162,16 +182,19 @@ PALETTE = [
     "#bf8700", "#0a3069", "#a40e26", "#0550ae", "#57606a",
 ]
 
-DEPRECATION_BUCKETS = [
-    ("Node.js 12 deprecation", "node.js 12 actions are deprecated"),
-    ("Node.js 16 deprecation", "node.js 16 actions are deprecated"),
-    ("Node.js 20 deprecation", "node.js 20 actions are deprecated"),
-    ("set-output",             "the `set-output` command is deprecated"),
-    ("save-state",             "the `save-state` command is deprecated"),
-    ("upload-artifact v3",     "actions/upload-artifact: v3"),
-    ("checkout v1/v2",         "actions/checkout: v"),
-    ("add-mask command",       "the `add-mask` command is deprecated"),
-]
+def load_buckets():
+    """Load (label, pattern) pairs from buckets.json. Order is significant —
+    first matching pattern wins, so put specific patterns before generic ones.
+    Returns [] if the file is absent; bucket() will fall through to the
+    generic 'Other deprecation' / 'Errors' / 'Other warnings' classifiers."""
+    path = Path("buckets.json")
+    if not path.exists():
+        return []
+    raw = json.loads(path.read_text())
+    return [(item["label"], item["pattern"]) for item in raw]
+
+
+DEPRECATION_BUCKETS = load_buckets()
 
 
 def bucket(msg):
@@ -197,17 +220,23 @@ def normalize_message(msg):
     return msg
 
 
-def bucket_id(label):
+def bucket_id(label, prefix=""):
     s = "".join(c.lower() if c.isalnum() else "-" for c in label)
-    return "cat-" + s.strip("-")
+    base = "cat-" + s.strip("-")
+    return f"{prefix}-{base}" if prefix else base
+
+
+def slug(name):
+    return "".join(c.lower() if c.isalnum() else "-" for c in name).strip("-")
 
 
 def entry_id(key):
     return "wf-" + "".join(c if c.isalnum() else "-" for c in key)
 
 
-def donut_svg(slices, size=180, stroke=28):
-    """slices: list of (label, count, color). Returns SVG string."""
+def donut_svg(slices, size=180, stroke=28, id_prefix=""):
+    """slices: list of (label, count, color). Returns SVG string.
+    `id_prefix` scopes the slice fragment links (e.g. 'hub' -> #hub-cat-...)."""
     import math
     total = sum(c for _, c, _ in slices)
     if total == 0:
@@ -220,7 +249,7 @@ def donut_svg(slices, size=180, stroke=28):
     for label, count, color in slices:
         dash = (count / total) * circ
         parts.append(
-            f'<a href="#{bucket_id(label)}">'
+            f'<a href="#{bucket_id(label, id_prefix)}">'
             f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" '
             f'stroke="{color}" stroke-width="{stroke}" '
             f'stroke-dasharray="{dash:.3f} {circ:.3f}" '
@@ -241,11 +270,11 @@ def donut_svg(slices, size=180, stroke=28):
     return "".join(parts)
 
 
-def legend_html(slices):
+def legend_html(slices, id_prefix=""):
     out = ['<ul class="legend">']
     for label, count, color in slices:
         out.append(
-            f'<li><a href="#{bucket_id(label)}">'
+            f'<li><a href="#{bucket_id(label, id_prefix)}">'
             f'<span class="swatch" style="background:{color}"></span>'
             f'<span class="legend-label">{html.escape(label)}</span>'
             f'<span class="count">{count}</span>'
@@ -282,32 +311,129 @@ def bar_chart_svg(rows, width=560, row_height=22):
     return "".join(parts)
 
 
-def compute_analytics(data):
-    """Returns (bucket_slices, top_messages) for chart rendering."""
+def compute_bucket_counts(data):
+    """Returns ordered list of (label, count) — workflow count per bucket."""
     bucket_counts = defaultdict(int)
-    message_counts = defaultdict(int)
     for entry in data.values():
         msgs = [m for m in (entry.get("annotation_messages") or []) if m]
-        unique_msgs = set(msgs)
         seen_buckets = set()
-        seen_normalized = set()
-        for msg in unique_msgs:
+        for msg in set(msgs):
             b = bucket(msg)
             if b not in seen_buckets:
                 bucket_counts[b] += 1
                 seen_buckets.add(b)
-            n = normalize_message(msg)
-            if n not in seen_normalized:
-                message_counts[n] += 1
-                seen_normalized.add(n)
+    return sorted(bucket_counts.items(), key=lambda kv: -kv[1])
 
-    sorted_buckets = sorted(bucket_counts.items(), key=lambda kv: -kv[1])
+
+def compute_analytics(data):
+    """Returns (bucket_slices, top_messages) for chart rendering."""
+    sorted_buckets = compute_bucket_counts(data)
     bucket_slices = [
         (label, count, PALETTE[i % len(PALETTE)])
         for i, (label, count) in enumerate(sorted_buckets)
     ]
+
+    message_counts = defaultdict(int)
+    for entry in data.values():
+        msgs = [m for m in (entry.get("annotation_messages") or []) if m]
+        seen_normalized = set()
+        for msg in set(msgs):
+            n = normalize_message(msg)
+            if n not in seen_normalized:
+                message_counts[n] += 1
+                seen_normalized.add(n)
     top_messages = sorted(message_counts.items(), key=lambda kv: -kv[1])[:10]
     return bucket_slices, top_messages
+
+
+def _norm_name(s):
+    return "".join(c.lower() for c in s if c.isalnum())
+
+
+def load_suites():
+    """Returns {suite_name: set(normalised_product_names)} or {} if no file."""
+    path = Path("suites.json")
+    if not path.exists():
+        return {}
+    raw = json.loads(path.read_text())
+    return {suite: {_norm_name(p) for p in products} for suite, products in raw.items()}
+
+
+def repo_base_from_key(key):
+    """Extract `repo-name` from a data key like `HT2-Labs/repo-name_1`."""
+    repo_full = key.rsplit("_", 1)[0] if "_" in key else key
+    return repo_full.split("/", 1)[-1]
+
+
+def compute_suite_breakdowns(data, suites):
+    """Returns list of dicts: [{name, repos, runs, slices}] in display order.
+    Defined suites come first (sorted by run count desc), then 'Other' last."""
+    if not suites:
+        return []
+    member_norm = set()
+    for members in suites.values():
+        member_norm.update(members)
+
+    # Bucket data entries by suite.
+    by_suite = defaultdict(dict)        # suite_name -> {key: entry}
+    suite_repos = defaultdict(set)       # suite_name -> {repo_base}
+    for key, entry in data.items():
+        base = repo_base_from_key(key)
+        norm = _norm_name(base)
+        assigned = "Other"
+        for suite, members in suites.items():
+            if norm in members:
+                assigned = suite
+                break
+        by_suite[assigned][key] = entry
+        suite_repos[assigned].add(base)
+
+    # Build a colour map keyed by bucket label using overall ordering, so the
+    # same category gets the same colour across every donut on the page.
+    overall = compute_bucket_counts(data)
+    color_map = {label: PALETTE[i % len(PALETTE)] for i, (label, _) in enumerate(overall)}
+
+    rows = []
+    for suite_name, sub in by_suite.items():
+        counts = compute_bucket_counts(sub)
+        slices = [(label, count, color_map.get(label, "#57606a")) for label, count in counts]
+        rows.append({
+            "name":  suite_name,
+            "slug":  slug(suite_name),
+            "repos": len(suite_repos[suite_name]),
+            "runs":  len(sub),
+            "slices": slices,
+            "data":  sub,
+        })
+    # Show defined suites sorted by run count desc, with Other last.
+    other = [r for r in rows if r["name"] == "Other"]
+    defined = [r for r in rows if r["name"] != "Other"]
+    defined.sort(key=lambda r: -r["runs"])
+    return defined + other
+
+
+def suites_html(breakdowns):
+    if not breakdowns:
+        return ""
+    parts = ['<section class="suites">']
+    parts.append('<h2 class="suites-heading">By suite</h2>')
+    for row in breakdowns:
+        parts.append('<div class="suite-card">')
+        parts.append(
+            f'<h4>{html.escape(row["name"])}'
+            f'<span class="muted">{row["repos"]} repo{"s" if row["repos"] != 1 else ""}'
+            f' · {row["runs"]} run{"s" if row["runs"] != 1 else ""}</span></h4>'
+        )
+        if row["slices"]:
+            parts.append('<div class="donut-wrap">')
+            parts.append(donut_svg(row["slices"], size=140, stroke=22, id_prefix=row["slug"]))
+            parts.append(legend_html(row["slices"], id_prefix=row["slug"]))
+            parts.append('</div>')
+        else:
+            parts.append('<div class="empty">No annotations captured</div>')
+        parts.append('</div>')
+    parts.append('</section>')
+    return "".join(parts)
 
 
 def summary_for(data):
@@ -351,18 +477,18 @@ def compute_category_detail(data):
     return by_bucket
 
 
-def render_category_details(by_bucket, slices_with_color):
+def render_category_details(by_bucket, slices_with_color, id_prefix="", title_suffix=""):
     parts = []
     for label, _count, color in slices_with_color:
         rows = by_bucket.get(label, [])
         if not rows:
             continue
-        bid = bucket_id(label)
+        bid = bucket_id(label, id_prefix)
         parts.append(f'<section class="category-detail" id="{bid}">')
         parts.append(
             '<div class="cat-head">'
             f'<h3><span class="dot" style="background:{color}"></span>'
-            f'{html.escape(label)}'
+            f'{html.escape(label)}{html.escape(title_suffix)}'
             f'<span class="muted">({len(rows)} workflow run(s))</span></h3>'
             '<a class="back" href="#charts">Back to charts</a>'
             '</div>'
@@ -452,6 +578,20 @@ def render(data, generated_at):
                 '</div>'
             )
         parts.append('</section>')
+
+    suites = load_suites()
+    breakdowns = compute_suite_breakdowns(data, suites) if suites else []
+    if breakdowns:
+        parts.append(suites_html(breakdowns))
+        for row in breakdowns:
+            if not row["slices"]:
+                continue
+            parts.append(render_category_details(
+                compute_category_detail(row["data"]),
+                row["slices"],
+                id_prefix=row["slug"],
+                title_suffix=f' in {row["name"]}',
+            ))
 
     if bucket_slices:
         parts.append(render_category_details(compute_category_detail(data), bucket_slices))

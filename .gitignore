@@ -1,6 +1,12 @@
+# Python
 __pycache__
+
+# Local config (copy from params-dist.py)
 params.py
-*.csv
-*.json
-*.html
+
+# Generated outputs
+annotations.json
+annotations_report.html
+affected_actions.csv
+repos_with_*.csv
 *-output.log

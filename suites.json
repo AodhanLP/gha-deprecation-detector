@@ -1,0 +1,72 @@
+{
+  "Elucidat-Author": [
+    "Elucidat-API-Screengrab",
+    "Elucidat-Accelerator",
+    "Elucidat-Authoring-Tool-Build",
+    "Elucidat-Learning-Hub",
+    "Elucidat-Projects"
+  ],
+  "Elucidat-Create": [
+    "Elucidat-API-AI-Systems",
+    "Elucidat-API-Assets",
+    "Elucidat-API-Collaborate",
+    "Elucidat-API-Import-Export",
+    "Elucidat-API-Learner",
+    "Elucidat-API-Projects",
+    "Elucidat-API-Schema",
+    "Elucidat-Course-Player",
+    "Elucidat-Create",
+    "Elucidat-Learning-Schema"
+  ],
+  "Elucidat-Shared": [
+    "Elucidat-API-Bookmarking",
+    "Elucidat-API-Event-Router",
+    "Elucidat-API-Passport",
+    "Elucidat-API-Review",
+    "Elucidat-API-Translate",
+    "Elucidat-API-Usage",
+    "Elucidat-Collaborate",
+    "Elucidat-Gateway",
+    "Elucidat-Identity-Service",
+    "Elucidat-Login-Service",
+    "Elucidat-React-Components",
+    "Elucidat-Reviews",
+    "Elucidat-Shared-Microservice-Components",
+    "Elucidat-Teams",
+    "Elucidat-URLs"
+  ],
+  "Hub": [
+    "Design-System",
+    "Ecosystem",
+    "LPHome",
+    "LPHome-Web"
+  ],
+  "OnScreen": [
+    "OSServerlessServices",
+    "OnScreenJobs",
+    "OnScreenNotifications",
+    "OnScreenSap",
+    "OnScreenWeb"
+  ],
+  "Palyx": [
+    "Palyx-Backoffice",
+    "Palyx-Frontend",
+    "Palyx-Microservices",
+    "Shared-Ontology"
+  ],
+  "WorkRamp-Backend": [
+    "WorkRamp-Learning",
+    "WorkRamp-SQS-Workers"
+  ],
+  "WorkRamp-Data": [
+    "WorkRamp-Transformations"
+  ],
+  "WorkRamp-Frontend": [
+    "WorkRamp-Chrome-App",
+    "WorkRamp-Mobile-App",
+    "WorkRamp-UI"
+  ],
+  "WorkRamp-Tests": [
+    "WorkRamp-QA-Tests"
+  ]
+}
