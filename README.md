@@ -18,17 +18,22 @@ cp params-dist.py params.py        # then edit `org` in params.py
 | Script             | What it does                                                        | Output                       |
 |--------------------|----------------------------------------------------------------------|------------------------------|
 | `annotations.py`   | Wide net — collect every annotation message from the latest successful run of every workflow | `annotations.json`           |
+| `probe_actions.py` | For each affected action, check GitHub for a Node 24-compatible release and flag breaking-changes mentions; verdict cached per action | `action_status.json`         |
+| `render_report.py` | Turn `annotations.json` (+ optional `action_status.json`) into a styled HTML report (charts, tables, per-action remediation) | `annotations_report.html`    |
 | `deprecation.py`   | Narrow filter — only warnings matching `params.deprecation_warning`, extracts affected `owner/action@ref` | `affected_actions.csv`       |
 | `search-action.py` | Find every workflow in the org that references a given action       | `repos_with_<action>.csv`    |
-| `render_report.py` | Turn `annotations.json` into a styled HTML report (charts, tables)  | `annotations_report.html`    |
 
 ## Typical run
 
 ```bash
 python3 annotations.py          # collect — takes a few minutes
+python3 probe_actions.py        # check upstream Node 24 status — ~30-60s
 python3 render_report.py        # render — instant
-open annotations_report.html       # view
+open annotations_report.html    # view
 ```
+
+`probe_actions.py` is optional; if `action_status.json` is missing, the report
+still renders but per-action remediation falls back to "Upstream check not run."
 
 For the narrower spreadsheet of just deprecation hits:
 

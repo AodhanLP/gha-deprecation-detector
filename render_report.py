@@ -10,6 +10,8 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from deprecation import ACTION_REGEX, NON_ACTION_OWNERS
+
 INPUT_DEFAULT = Path("annotations.json")
 OUTPUT_DEFAULT = Path("annotations_report.html")
 
@@ -134,6 +136,59 @@ svg a circle:hover { opacity: 0.85; }
 }
 .category-detail tbody tr { cursor: help; }
 .category-detail tbody tr:hover { background: #f6f8fa; }
+.affected-actions {
+    padding: 12px 16px; border-bottom: 1px solid #eaeef2;
+    background: #fafbfc;
+}
+.affected-actions h4 {
+    margin: 0 0 8px 0; font-size: 11px; font-weight: 600;
+    text-transform: uppercase; color: #57606a; letter-spacing: 0.4px;
+}
+.affected-actions ul { margin: 0; padding: 0; list-style: none; }
+.affected-actions li {
+    padding: 6px 0; font-size: 13px;
+    border-bottom: 1px dotted #eaeef2;
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px;
+}
+.affected-actions li:last-child { border-bottom: none; }
+.affected-actions .ref {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: #f6f8fa; padding: 1px 6px; border-radius: 3px;
+    font-size: 12px; color: #1f2328;
+    text-decoration: none;
+}
+.affected-actions a.ref:hover {
+    background: #ddf4ff; color: #0969da;
+}
+.action-remediation {
+    padding: 10px 16px; background: #f6f8fa;
+    border-bottom: 1px solid #d0d7de;
+    font-size: 13px;
+}
+.action-remediation code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: #fff; padding: 1px 6px; border-radius: 3px;
+    font-size: 12px;
+}
+.affected-actions .count {
+    color: #57606a; font-size: 12px;
+    cursor: help; border-bottom: 1px dotted #57606a;
+}
+.affected-actions .remediation { color: #1f2328; flex: 1; min-width: 240px; }
+.affected-actions .remediation.up { color: #1a7f37; }
+.affected-actions .remediation.stuck { color: #cf222e; }
+.affected-actions .remediation.muted { color: #57606a; }
+.notes-link {
+    color: #0969da; text-decoration: none; font-size: 12px;
+    margin-left: 4px;
+}
+.notes-link:hover { text-decoration: underline; }
+.breaking-warn {
+    color: #9a6700; background: #fff8c5;
+    padding: 1px 6px; border-radius: 3px;
+    font-size: 12px; margin-left: 6px; cursor: help;
+    border: 1px solid #d4a72c;
+}
 .suites {
     display: flex; gap: 12px; padding: 16px 32px; flex-wrap: wrap;
     background: #fff; border-bottom: 1px solid #d0d7de;
@@ -164,6 +219,19 @@ svg a circle:hover { opacity: 0.85; }
     font-size: 12px; color: #57606a;
 }
 .workflow:target { background: #fff8c5; }
+.run-link {
+    color: inherit; text-decoration: none;
+    border-bottom: 1px dashed rgba(31, 35, 40, 0.25);
+}
+.run-link:hover { color: #0969da; border-bottom-color: #0969da; }
+.run-link .run-arrow { color: #57606a; font-size: 0.85em; margin-left: 2px; }
+.run-link:hover .run-arrow { color: #0969da; }
+.category-detail tbody td.wf-cell { padding: 0; }
+.category-detail tbody td.wf-cell .run-link {
+    display: block; padding: 8px 16px;
+    border-bottom: none;
+}
+.category-detail tbody td.wf-cell .run-link:hover { background: #ddf4ff; }
 .to-top {
     position: fixed; bottom: 24px; right: 24px;
     width: 40px; height: 40px; border-radius: 50%;
@@ -436,6 +504,147 @@ def suites_html(breakdowns):
     return "".join(parts)
 
 
+def compute_action_workflows(data):
+    """Return {action_ref: [{repo, workflow_name, workflow_path, key, run_url}, ...]}
+    — every workflow that mentions each action, deduped per workflow."""
+    out = defaultdict(dict)  # action_ref -> {entry_key: row_info}
+    for key, entry in data.items():
+        repo_full = key.rsplit("_", 1)[0] if "_" in key else key
+        info = {
+            "repo": repo_full,
+            "workflow_name": entry.get("workflow_name") or "unknown",
+            "workflow_path": entry.get("workflow_path") or "",
+            "run_url": entry.get("run_url") or "",
+            "key": key,
+        }
+        msgs = [m for m in (entry.get("annotation_messages") or []) if m]
+        seen_refs = set()
+        for msg in set(msgs):
+            for ref in ACTION_REGEX.findall(msg):
+                if "@" not in ref or "/" not in ref:
+                    continue
+                owner = ref.split("/", 1)[0].lower()
+                if owner in NON_ACTION_OWNERS:
+                    continue
+                seen_refs.add(ref)
+        for ref in seen_refs:
+            if key not in out[ref]:
+                out[ref][key] = info
+    return {
+        ref: sorted(infos.values(),
+                    key=lambda r: (r["repo"].lower(), r["workflow_name"].lower()))
+        for ref, infos in out.items()
+    }
+
+
+def action_id(ref):
+    return "action-" + slug(ref)
+
+
+def compute_affected_actions(data):
+    """Return {bucket_label: {action_ref: [{repo, workflow_name}, ...]}}.
+    A workflow that lists the same action twice in one message counts once."""
+    by_bucket = defaultdict(lambda: defaultdict(list))
+    for key, entry in data.items():
+        repo_full = key.rsplit("_", 1)[0] if "_" in key else key
+        wf_name = entry.get("workflow_name") or "unknown"
+        msgs = [m for m in (entry.get("annotation_messages") or []) if m]
+        seen = set()  # (bucket, ref) pairs already counted for this workflow
+        for msg in set(msgs):
+            b = bucket(msg)
+            for ref in ACTION_REGEX.findall(msg):
+                if "@" not in ref or "/" not in ref:
+                    continue
+                owner = ref.split("/", 1)[0].lower()
+                if owner in NON_ACTION_OWNERS:
+                    continue
+                seen.add((b, ref))
+        for b, ref in seen:
+            by_bucket[b][ref].append({"repo": repo_full, "workflow_name": wf_name})
+    return {b: dict(refs) for b, refs in by_bucket.items()}
+
+
+def load_action_status():
+    """Read action_status.json (written by probe_actions.py). Returns the
+    `actions` map or {} if absent/unparseable so render still works."""
+    path = Path("action_status.json")
+    if not path.exists():
+        return {}
+    try:
+        return json.loads(path.read_text()).get("actions", {})
+    except Exception as e:
+        print(f"[render] couldn't parse action_status.json: {e}", file=sys.stderr)
+        return {}
+
+
+def _repo_key(action_ref):
+    """`actions/cache/restore@v4` -> `actions/cache`."""
+    path = action_ref.split("@", 1)[0]
+    parts = path.split("/")
+    return "/".join(parts[:2]) if len(parts) >= 2 else path
+
+
+def _format_dmy(iso_str):
+    """`2026-01-09T00:00:00Z` -> `09/01/2026`. Falls back to the raw string."""
+    if not iso_str:
+        return ""
+    try:
+        y, m, d = iso_str[:10].split("-")
+        return f"{d}/{m}/{y}"
+    except Exception:
+        return iso_str[:10]
+
+
+def remediation_for(action_ref, status_map):
+    """Returns (html_string, css_class). Falls back gracefully when status_map
+    has no entry for this action (e.g. probe wasn't run)."""
+    status = status_map.get(_repo_key(action_ref)) if status_map else None
+    if not status:
+        return ("Upstream check not run.", "muted")
+    verdict = status.get("verdict")
+    if verdict == "newer_node24_available":
+        pin = status.get("suggested_pin", "?")
+        date = _format_dmy(status.get("latest_release_date"))
+        url = status.get("latest_release_url", "")
+        repo = _repo_key(action_ref)
+        notes_link = (
+            f' <a class="notes-link" href="{html.escape(url)}" '
+            f'target="_blank" rel="noopener" '
+            f'title="View release notes on GitHub">'
+            f'release notes <span class="run-arrow">&#8599;</span></a>'
+        ) if url else ""
+        breaking = (
+            ' <span class="breaking-warn" '
+            'title="Release notes mention breaking changes — review before bumping.">'
+            '&#9888; mentions breaking changes</span>'
+        ) if status.get("notes_mention_breaking") else ""
+        return (
+            f'Update to <code>{html.escape(repo)}@{html.escape(pin)}</code>'
+            f' (Node 24{f", released {html.escape(date)}" if date else ""}).'
+            f'{notes_link}{breaking}',
+            "up",
+        )
+    if verdict == "pin_already_node24":
+        date = _format_dmy(status.get("latest_release_date"))
+        url = status.get("latest_release_url", "")
+        notes_link = (
+            f' <a class="notes-link" href="{html.escape(url)}" '
+            f'target="_blank" rel="noopener">release notes '
+            f'<span class="run-arrow">&#8599;</span></a>'
+        ) if url else ""
+        suffix = f" (latest {date}).{notes_link}" if date else f".{notes_link}"
+        return (f"Already on latest Node 24 release — annotation may be stale{suffix}", "up")
+    if verdict == "latest_still_node20":
+        return ("No Node 24 upstream upgrade available.", "stuck")
+    if verdict == "non_node_runtime":
+        return ("Composite/Docker runtime — not affected by Node 24 deprecation.", "muted")
+    if verdict == "internal":
+        return ("Internal action — needs maintainer update.", "muted")
+    if verdict == "probe_failed":
+        return ("Could not check upstream (private or removed).", "muted")
+    return ("Upstream check not run.", "muted")
+
+
 def summary_for(data):
     """One-line digest the pipeline can scrape from stdout."""
     bucket_counts = defaultdict(int)
@@ -470,6 +679,7 @@ def compute_category_detail(data):
                 "repo": repo_full,
                 "workflow_name": entry.get("workflow_name", ""),
                 "workflow_path": entry.get("workflow_path", ""),
+                "run_url": entry.get("run_url") or "",
                 "messages": sorted(bms),
             })
     for b in by_bucket:
@@ -477,8 +687,11 @@ def compute_category_detail(data):
     return by_bucket
 
 
-def render_category_details(by_bucket, slices_with_color, id_prefix="", title_suffix=""):
+def render_category_details(by_bucket, slices_with_color, id_prefix="", title_suffix="",
+                             affected_actions=None, action_status=None):
     parts = []
+    affected_actions = affected_actions or {}
+    action_status    = action_status or {}
     for label, _count, color in slices_with_color:
         rows = by_bucket.get(label, [])
         if not rows:
@@ -493,22 +706,119 @@ def render_category_details(by_bucket, slices_with_color, id_prefix="", title_su
             '<a class="back" href="#charts">Back to charts</a>'
             '</div>'
         )
+
+        # Affected actions panel — slot in above the table when the category
+        # actually has identifiable action refs (e.g. Node 20 deprecation has
+        # them; `set-output` / `save-state` / generic Errors don't).
+        bucket_actions = affected_actions.get(label) or {}
+        if bucket_actions:
+            # Sort by workflow count desc, then ref asc
+            ordered = sorted(bucket_actions.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+            parts.append('<div class="affected-actions">')
+            parts.append('<h4>Affected actions</h4><ul>')
+            for ref, wfs in ordered:
+                n = len(wfs)
+                rem_html, rem_cls = remediation_for(ref, action_status)
+                # Tooltip lists the workflows; cap at 30 lines to keep the
+                # browser tooltip readable for high-fanout actions like
+                # `HT2-Labs/elucidat-get-changed-files@v1.0.0` (177 workflows).
+                wfs_sorted = sorted(wfs, key=lambda w: (w["repo"].lower(), w["workflow_name"].lower()))
+                if len(wfs_sorted) > 30:
+                    head = wfs_sorted[:30]
+                    extra = len(wfs_sorted) - 30
+                    lines = [f'{w["repo"]} / {w["workflow_name"]}' for w in head]
+                    lines.append(f'…and {extra} more')
+                else:
+                    lines = [f'{w["repo"]} / {w["workflow_name"]}' for w in wfs_sorted]
+                tooltip = html.escape("\n".join(lines))
+                parts.append(
+                    '<li>'
+                    f'<a class="ref" href="#{action_id(ref)}">{html.escape(ref)}</a>'
+                    f'<span class="count" title="{tooltip}">'
+                    f'· {n} workflow{"s" if n != 1 else ""} affected ·</span>'
+                    f'<span class="remediation {rem_cls}">{rem_html}</span>'
+                    '</li>'
+                )
+            parts.append('</ul></div>')
+
         parts.append('<table><thead><tr>'
                      '<th>Repository</th><th>Workflow</th><th>Path</th>'
                      '</tr></thead><tbody>')
         for row in rows:
             title_text = html.escape("\n\n".join(row["messages"]))
             href = "#" + entry_id(row["key"])
+            run_url = row.get("run_url") or ""
+            wf_name = html.escape(str(row["workflow_name"]))
+            if run_url:
+                wf_cell = (
+                    f'<td class="wf-cell">'
+                    f'<a class="run-link" href="{html.escape(run_url)}" '
+                    f'title="View workflow run on GitHub" '
+                    f'target="_blank" rel="noopener">'
+                    f'{wf_name} <span class="run-arrow">&#8599;</span>'
+                    f'</a></td>'
+                )
+            else:
+                wf_cell = f'<td><a class="row-link" href="{href}">{wf_name}</a></td>'
             parts.append(
                 f'<tr title="{title_text}">'
                 f'<td><a class="row-link" href="{href}">{html.escape(row["repo"])}</a></td>'
-                f'<td><a class="row-link" href="{href}">{html.escape(str(row["workflow_name"]))}</a></td>'
+                f'{wf_cell}'
                 f'<td class="path"><a class="row-link" href="{href}">{html.escape(str(row["workflow_path"]))}</a></td>'
                 f'</tr>'
             )
         parts.append('</tbody></table></section>')
     return "".join(parts)
 
+
+def render_action_details(action_workflows, action_status=None):
+    """Hidden `:target`-revealed table per unique action ref. Linked from the
+    affected-actions panel. Reuses .category-detail styling for visual parity."""
+    parts = []
+    action_status = action_status or {}
+    ordered = sorted(action_workflows.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    for ref, wfs in ordered:
+        if not wfs:
+            continue
+        aid = action_id(ref)
+        rem_html, rem_cls = remediation_for(ref, action_status)
+        parts.append(f'<section class="category-detail action-detail" id="{aid}">')
+        parts.append(
+            '<div class="cat-head">'
+            f'<h3>Affected by <code>{html.escape(ref)}</code>'
+            f'<span class="muted">({len(wfs)} workflow run(s))</span></h3>'
+            '<a class="back" href="#charts">Back to charts</a>'
+            '</div>'
+            f'<div class="action-remediation"><span class="remediation {rem_cls}">'
+            f'{rem_html}</span></div>'
+        )
+        parts.append('<table><thead><tr>'
+                     '<th>Repository</th><th>Workflow</th><th>Path</th>'
+                     '</tr></thead><tbody>')
+        for w in wfs:
+            href = "#" + entry_id(w["key"])
+            run_url = w.get("run_url") or ""
+            wf_name = html.escape(w["workflow_name"])
+            if run_url:
+                wf_cell = (
+                    f'<td class="wf-cell">'
+                    f'<a class="run-link" href="{html.escape(run_url)}" '
+                    f'title="View workflow run on GitHub" '
+                    f'target="_blank" rel="noopener">'
+                    f'{wf_name} <span class="run-arrow">&#8599;</span>'
+                    f'</a></td>'
+                )
+            else:
+                wf_cell = f'<td><a class="row-link" href="{href}">{wf_name}</a></td>'
+            parts.append(
+                f'<tr>'
+                f'<td><a class="row-link" href="{href}">{html.escape(w["repo"])}</a></td>'
+                f'{wf_cell}'
+                f'<td class="path"><a class="row-link" href="{href}">{html.escape(w["workflow_path"])}</a></td>'
+                f'</tr>'
+            )
+        parts.append('</tbody></table></section>')
+    return "".join(parts)
 
 
 def classify(msg):
@@ -579,6 +889,8 @@ def render(data, generated_at):
             )
         parts.append('</section>')
 
+    action_status = load_action_status()
+
     suites = load_suites()
     breakdowns = compute_suite_breakdowns(data, suites) if suites else []
     if breakdowns:
@@ -591,10 +903,21 @@ def render(data, generated_at):
                 row["slices"],
                 id_prefix=row["slug"],
                 title_suffix=f' in {row["name"]}',
+                affected_actions=compute_affected_actions(row["data"]),
+                action_status=action_status,
             ))
 
     if bucket_slices:
-        parts.append(render_category_details(compute_category_detail(data), bucket_slices))
+        parts.append(render_category_details(
+            compute_category_detail(data),
+            bucket_slices,
+            affected_actions=compute_affected_actions(data),
+            action_status=action_status,
+        ))
+
+    # Per-action drill-down tables — clicked from the affected-actions panel.
+    # Org-wide scope (all workflows affected by each action), not suite-scoped.
+    parts.append(render_action_details(compute_action_workflows(data), action_status))
 
     parts.append(f'<nav class="toc"><h2>Repositories ({total_repos})</h2><ul>')
     for repo in sorted(by_repo):
@@ -616,9 +939,19 @@ def render(data, generated_at):
         for key, entry in entries:
             wf_name = entry.get("workflow_name", "unknown")
             wf_path = entry.get("workflow_path", "")
+            run_url = entry.get("run_url") or ""
             messages = entry.get("annotation_messages", []) or []
             parts.append(f'<div class="workflow" id="{entry_id(key)}">')
-            parts.append(f'<h3>{html.escape(str(wf_name))}</h3>')
+            if run_url:
+                parts.append(
+                    f'<h3><a class="run-link" href="{html.escape(run_url)}" '
+                    f'title="View workflow run on GitHub" '
+                    f'target="_blank" rel="noopener">'
+                    f'{html.escape(str(wf_name))} '
+                    f'<span class="run-arrow">&#8599;</span></a></h3>'
+                )
+            else:
+                parts.append(f'<h3>{html.escape(str(wf_name))}</h3>')
             if wf_path:
                 parts.append(f'<div class="path">{html.escape(str(wf_path))}</div>')
             parts.append('<ul class="messages">')

@@ -42,6 +42,7 @@ def process_workflow(repo, workflow_id):
     workflow_name = run["name"]
     workflow_path = run["path"]
     repository_name = run["repository"]["name"]
+    run_url = run.get("html_url", "")
 
     if verbose_output:
         print(f"[annotations] {repo} / {workflow_name} (suite {check_suite_id})")
@@ -70,6 +71,7 @@ def process_workflow(repo, workflow_id):
         "workflow_name": workflow_name,
         "workflow_path": workflow_path,
         "repository_name": repository_name,
+        "run_url": run_url,
         "annotation_messages": list(dict.fromkeys(messages)),
     }
 
@@ -126,6 +128,7 @@ def main():
                 "workflow_name": result["workflow_name"],
                 "workflow_path": result["workflow_path"],
                 "repository_name": result["repository_name"],
+                "run_url": result["run_url"],
                 "annotation_messages": result["annotation_messages"],
             }
 

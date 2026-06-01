@@ -6,6 +6,7 @@ params.py
 
 # Generated outputs
 annotations.json
+action_status.json
 annotations_report.html
 affected_actions.csv
 repos_with_*.csv

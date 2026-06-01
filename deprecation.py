@@ -6,12 +6,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import gh_client
 import params as p
-import repos as r
 
 MAX_WORKERS = 8
-ACTION_REGEX = re.compile(r'(?:[\w-]+\/[\w-]+)@[\w\d]+(?:\.[\w\d]+)*')
+# Captures multi-segment paths like `actions/cache/restore@v4` (subpath actions),
+# not just the trailing two segments. Other modules import this as the single
+# source of truth — keep the import side-effect-free (no API calls at module load).
+ACTION_REGEX = re.compile(r'(?:[\w-]+(?:\/[\w-]+)+)@[\w\d]+(?:\.[\w\d]+)*')
 
-repos_list = r.repos
+# Owners whose `owner/name@version` refs are NOT GitHub actions — they show up
+# in JSON dependency manifests embedded in some annotation messages (Python
+# package snapshots, etc). Filter at extraction so they don't pollute the
+# affected-actions panel or trigger pointless probe API calls.
+NON_ACTION_OWNERS = frozenset({"pypi", "npm", "rubygems", "maven", "nuget"})
+
 verbose_output = p.verbose_output
 deprecation_warning = p.deprecation_warning
 csv_file_path = p.csv_file_path
@@ -86,6 +93,11 @@ def main():
     if remaining < 200:
         wait_s = max(reset - int(time.time()), 0)
         print(f"WARNING: rate limit low. Resets in {wait_s}s")
+
+    # Lazy-loaded so `from deprecation import ACTION_REGEX` doesn't trigger
+    # the org-wide repo listing in repos.py.
+    import repos as r
+    repos_list = r.repos
 
     failures = []  # list of (stage, repo, workflow_id_or_None, exception)
 
