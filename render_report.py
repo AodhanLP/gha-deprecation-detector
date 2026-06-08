@@ -983,7 +983,7 @@ def main():
         print(f"Could not parse {in_path}: {e}")
         sys.exit(1)
 
-    generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    generated = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
     out_path.write_text(render(data, generated), encoding="utf-8")
     print(f"Wrote {out_path} ({out_path.stat().st_size:,} bytes)")
     print(f"[GHA_DEP_SUMMARY] {json.dumps(summary_for(data))}")

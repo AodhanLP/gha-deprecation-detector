@@ -20,6 +20,7 @@ cp params-dist.py params.py        # then edit `org` in params.py
 | `annotations.py`   | Wide net — collect every annotation message from the latest successful run of every workflow | `annotations.json`           |
 | `probe_actions.py` | For each affected action, check GitHub for a Node 24-compatible release and flag breaking-changes mentions; verdict cached per action | `action_status.json`         |
 | `render_report.py` | Turn `annotations.json` (+ optional `action_status.json`) into a styled HTML report (charts, tables, per-action remediation) | `annotations_report.html`    |
+| `trend.py`         | Take multiple archived `annotations.json` snapshots over time and chart how Node 20 deprecation counts evolve | `trend_report.html`          |
 | `deprecation.py`   | Narrow filter — only warnings matching `params.deprecation_warning`, extracts affected `owner/action@ref` | `affected_actions.csv`       |
 | `search-action.py` | Find every workflow in the org that references a given action       | `repos_with_<action>.csv`    |
 
@@ -47,6 +48,17 @@ To check which repos use a specific action:
 ```bash
 python3 search-action.py actions/checkout
 ```
+
+For trend tracking across multiple fortnightly runs, archive each
+`annotations.json` snapshot under a `YYYY-MM-DD` filename, then:
+
+```bash
+python3 trend.py history/2026-04-15.json history/2026-05-01.json history/2026-05-15.json
+open trend_report.html
+```
+
+Single-snapshot also works (renders one data point); filenames without a
+date prefix fall back to file mtime with a warning.
 
 ## Maintaining the report
 
